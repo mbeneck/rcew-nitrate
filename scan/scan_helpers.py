@@ -10,3 +10,8 @@ def import_scan_fp(path):
     df['Date/Time'] = pd.to_datetime(df['Date/Time'])
     #df.set_index('Date/Time', inplace=True)
     return df
+
+def apply_calibrations(df, calibrations, calibrations_kwargs):
+    for calibration in calibrations:
+        df = calibration(df, **calibrations_kwargs[calibration])
+    return df

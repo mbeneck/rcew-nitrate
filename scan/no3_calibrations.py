@@ -2,8 +2,9 @@ import pandas as pd
 from scipy.signal import savgol_filter
 import matplotlib.pyplot as plt
 
-def second_derivative(df, output_calibrated = True, **kwargs):
-    window_size = kwargs.get('window_size', 5)
+def second_derivative(df, **kwargs):
+    output_calibrated = kwargs.get('output_calibrated', True)
+    window_size = kwargs.get('window_size', 3)
     poly_order = kwargs.get('poly_order',2)
     wavelength = kwargs.get('wavelength', "227.50")
     slope = kwargs.get('slope', 1)
@@ -18,7 +19,8 @@ def second_derivative(df, output_calibrated = True, **kwargs):
     
     return df
 
-def two_wavelength(df, output_calibrated=True, **kwargs):
+def two_wavelength(df, **kwargs):
+    output_calibrated = kwargs.get('output_calibrated', True)
     wavelength = kwargs.get('wavelength', '220.00')
     cdom_wavelength = kwargs.get('cdom_wavelength', '275.00')
     alpha = kwargs.get('alpha', 2)
@@ -33,7 +35,8 @@ def two_wavelength(df, output_calibrated=True, **kwargs):
         
     return df
 
-def one_wavelength(df, output_calibrated=True, **kwargs):
+def one_wavelength(df, **kwargs):
+    output_calibrated = kwargs.get('output_calibrated', True)
     wavelength = kwargs.get('wavelength', '220.00')
     slope = kwargs.get('slope', 1)
     intercept = kwargs.get('intercept', 0)
