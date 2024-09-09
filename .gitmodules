@@ -1,0 +1,3 @@
+[submodule "scan_spectrolyser"]
+	path = scan_spectrolyser
+	url = https://github.com/mbeneck/scan_spectrolyser.git
