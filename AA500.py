@@ -23,8 +23,12 @@ class AA500_Result:
     def _merge_results_samplelist(self, result_mapping):
         samples = self._raw_result_df[(self._raw_result_df['Cup Type'] == 'DSAMP')| (self._raw_result_df['Cup Type'] == '3SAMP') | (self._raw_result_df['Cup Type'] == 'SAMP')] 
         sample_results = samples.groupby('Cup Number')[list(result_mapping.values())].describe()
-        #sample_results.rename(result_mapping, axis=1, inplace=True)
         sample_results= sample_results.loc[:, pd.IndexSlice[:, ['mean', 'std']]]
+
+        err = sample_results.loc[:, pd.IndexSlice[:, 'std']].apply(lambda x: 2 * x)         ## add err (2* std)
+        err.columns = pd.MultiIndex.from_tuples([(col[0], 'err') for col in err.columns])
+        sample_results = pd.concat([sample_results, err], axis=1).sort_index(axis=1)
+
         sample_results.columns = sample_results.columns.map(' '.join)
         return self._samplelist_df.join(sample_results, on = 'Cup Number', how='right', validate='one_to_one').set_index(['Site Name', 'Sample Datetime']).sort_values(['Site Name', 'Sample Datetime'])
 
