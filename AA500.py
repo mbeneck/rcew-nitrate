@@ -115,6 +115,45 @@ class AA500_Result:
                 self.result_df[value + ' QA'] = self._concat_qa_strings(self.result_df, value, flags['pH flag'])
 
 
+    def plot_single_bbv(self, result_df, analyte, **kwargs):
+        df = result_df.reset_index()
+        # Find Sample Datetime values with more than one sample
+        counts = df['Sample Datetime'].value_counts()
+        multi_samples = counts[counts > 1].index
+        # Filter to only those Sample Datetime values
+        df = df[df['Sample Datetime'].isin(multi_samples)]
+
+        # Pivot so each bottle replicate is a column, indexed by date
+        pivoted = df.pivot_table(
+        index='Sample Datetime',
+        columns='Bottle Replicate',
+        values=analyte + ' mean'
+        )
+
+        # Optionally, get errors for yerr
+        yerr = df.pivot_table(
+            index='Sample Datetime',
+            columns='Bottle Replicate',
+            values=analyte + ' err'
+        )
+
+        # Plot
+        ax = pivoted.plot(kind='bar', yerr=yerr, rot=45, **kwargs)
+        ax.set_ylabel(analyte+ ' mean')
+        #ax.set_title(analyte + ' by Date and Bottle Replicate')
+        ax.legend(title='Bottle Replicate')
+        #plt.tight_layout()
+        #plt.show()
+        return ax
+    
+    def plot_all_bbv(self, **kwargs):
+        vals = self._result_mapping.values()
+        fig, axs = plt.subplots(figsize= (8.5, 11), nrows= len(vals), sharex=True)                
+        for val, ax  in zip(vals, axs):
+            self.plot_single_bbv(self.unspiked_result_df, val, ax=ax)
+            ax.set_title(val + ' BBV')
+        fig.tight_layout()
+
 
     def plot_drift_QA(self, result_name, **kwargs):
         drift_readings = self._raw_result_df[self._result_df['Cup Type'] == 'DRIF']
