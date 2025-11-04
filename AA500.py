@@ -16,7 +16,10 @@ class AA500_Result:
         self._calc_in_sample_std_QA()
         self._calc_bbv()
         self.unspiked_result_df = self.result_df.loc[(slice(None), 0),:]
-        self.spiked_result_df = self.result_df.loc[(slice(None), 1),:]
+        if 1 in self.result_df.index.get_level_values('Spike'):
+            self.spiked_result_df = self.result_df.loc[(slice(None), 1), :]
+        else:
+            self.spiked_result_df = pd.DataFrame()
         self._calc_recovery(spike)
 
     @staticmethod
@@ -36,6 +39,7 @@ class AA500_Result:
             unspiked = self.unspiked_result_df.reset_index().set_index('Sample ID')[columns]
             spiked = self.spiked_result_df.reset_index().set_index('Sample ID')[columns]
             recovery = (spiked - unspiked)/spike*100
+            recovery = recovery.dropna()
             self.recovery = recovery
             self.recovery_styled = recovery.style.map(self._color_recovery)
 
@@ -91,7 +95,7 @@ class AA500_Result:
             # Group by bottle (Site Name, Sample Datetime)
             grouped = unspiked.set_index(['Site Name', 'Sample Datetime'])[[value + ' mean']].groupby(['Site Name', 'Sample Datetime'])
             # Calculate BBV flag
-            flags = grouped.transform(lambda x: 'BBV' if (((x.max() - x.min()) / x.mean()) > self._bbv_thresholds[value]) else '')
+            flags = grouped.transform(lambda x: 'BBV' if (((x.max() - x.min())) > 2*self._isv_thresholds[value]) else '')
             flags = flags.fillna('')
             flags.index = unspiked.index
             unspiked[value + ' QA'] = self._concat_qa_strings(unspiked, value, flags[value + ' mean'])
