@@ -1,5 +1,6 @@
 import pandas as pd
 import matplotlib.pyplot as plt
+import numpy as np
 
 class AA500_Result:
     def __init__(self, result_path, samplelist_path, master_path, result_mapping={'Results 1':'Nitrate', 'Results 2':'Phosphate', 'Results 3':'Ammonium'}, isv_thresholds = {'Nitrate':.005, 'Phosphate':.004, 'Ammonium': .005}, bbv_thresholds = {'Nitrate':.1, 'Phosphate':.1, 'Ammonium': .1}, pH_threshold = 8, spike = .1):
@@ -18,12 +19,16 @@ class AA500_Result:
         self._calc_in_sample_std_QA()
         self._check_pH()
         self._calc_bbv()
+        self._update_result_df()
+        self._calc_recovery(spike)
+
+    def _update_result_df(self):
         self.unspiked_result_df = self.result_df.loc[(slice(None), 0),:]
         if 1 in self.result_df.index.get_level_values('Spike'):
             self.spiked_result_df = self.result_df.loc[(slice(None), 1), :]
         else:
             self.spiked_result_df = pd.DataFrame(columns=self.result_df.columns)
-        self._calc_recovery(spike)
+
 
     @staticmethod
     def _color_recovery(val):
@@ -123,6 +128,17 @@ class AA500_Result:
             for value in self._result_mapping.values():
                 self.result_df[value + ' QA'] = self._concat_qa_strings(self.result_df, value, flags['pH flag'])
 
+    def drop_bad_peaks(self, bad_peak_dict):
+        result_df = self.result_df.reset_index().set_index('Cup Number')     
+
+        for key in bad_peak_dict.keys():
+            result_df.loc[bad_peak_dict[key],[key + ' mean', key + ' err', key + ' std']] = np.nan
+            flags = pd.Series('', index=result_df.index)
+            flags.loc[bad_peak_dict[key]] = 'BP'
+            result_df[key + ' QA'] = self._concat_qa_strings(result_df, key, flags)
+
+        self.result_df = result_df.reset_index().set_index(['Sample ID', 'Spike'])
+        self._update_result_df()
 
     def plot_single_bbv(self, result_df, analyte, **kwargs):
         df = result_df.reset_index()
