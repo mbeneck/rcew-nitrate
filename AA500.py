@@ -2,9 +2,10 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 class AA500_Result:
-    def __init__(self, result_path, samplelist_path, master_path, result_mapping={'Results 1':'Nitrate', 'Results 2':'Phosphate', 'Results 3':'Ammonium'}, isv_thresholds = {'Nitrate':.005, 'Phosphate':.004, 'Ammonium': .005}, bbv_thresholds = {'Nitrate':.1, 'Phosphate':.1, 'Ammonium': .1}, spike = .1):
+    def __init__(self, result_path, samplelist_path, master_path, result_mapping={'Results 1':'Nitrate', 'Results 2':'Phosphate', 'Results 3':'Ammonium'}, isv_thresholds = {'Nitrate':.005, 'Phosphate':.004, 'Ammonium': .005}, bbv_thresholds = {'Nitrate':.1, 'Phosphate':.1, 'Ammonium': .1}, pH_threshold = 8, spike = .1):
         self._isv_thresholds = isv_thresholds
         self._bbv_thresholds = bbv_thresholds
+        self._pH_threshold = pH_threshold
 
         self._result_mapping = result_mapping
         self._raw_result_df = self._read_AA500_results(result_path)
@@ -14,6 +15,7 @@ class AA500_Result:
         self.result_df['AA500 Run Date'] = pd.to_datetime(self._metadata.loc['DATE', 'Value']+ ' ' + self._metadata.loc['TIME', 'Value'])
         self.result_df['AA500 Operator'] = self._metadata.loc['OPER', 'Value']
         self._calc_in_sample_std_QA()
+        self._check_pH()
         self._calc_bbv()
         self.unspiked_result_df = self.result_df.loc[(slice(None), 0),:]
         if 1 in self.result_df.index.get_level_values('Spike'):
@@ -101,6 +103,17 @@ class AA500_Result:
             unspiked[value + ' QA'] = self._concat_qa_strings(unspiked, value, flags[value + ' mean'])
             # Update the main result_df only for unspiked rows
             self.result_df.loc[unspiked.index, value + ' QA'] = unspiked[value + ' QA']
+
+    def _check_pH(self):
+        if 'Start pH after NaHCO3' in self.result_df.columns:
+            flags = pd.DataFrame()
+            flags.index = self.result_df.index
+            flags['pH flag'] = ''
+            flags[self.result_df['Start pH after NaHCO3']>self._pH_threshold] = 'PH'
+            print(flags)
+            for value in self._result_mapping.values():
+                self.result_df[value + ' QA'] = self._concat_qa_strings(self.result_df, value, flags['pH flag'])
+
 
 
     def plot_drift_QA(self, result_name, **kwargs):
