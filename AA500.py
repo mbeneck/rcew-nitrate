@@ -14,6 +14,7 @@ class AA500_Result:
         self.result_df = self._merge_results_samplelist(result_mapping)
         self.result_df['AA500 Run Date'] = pd.to_datetime(self._metadata.loc['DATE', 'Value']+ ' ' + self._metadata.loc['TIME', 'Value'])
         self.result_df['AA500 Operator'] = self._metadata.loc['OPER', 'Value']
+        self._correct_neutralization()
         self._calc_in_sample_std_QA()
         self._check_pH()
         self._calc_bbv()
@@ -32,6 +33,14 @@ class AA500_Result:
             return 'background-color: orange'
         else:
             return 'background-color: red'
+        
+    def _correct_neutralization(self):
+        vol_cols = ['Volume', 'Vol NaHCO3', 'Vol NaOH/HCl Added']
+        if all(col in self.result_df.columns for col in vol_cols):
+            scale_factors = (self.result_df['Volume']*1000 + self.result_df['Vol NaHCO3']+ self.result_df['Vol NaOH/HCl Added'])/(self.result_df['Volume']*1000)
+            self.result_df['Dilution Scale Factors'] = scale_factors
+            for val in self._result_mapping.values():
+                self.result_df[[val + ' mean', val + ' std', val + ' err']] = self.result_df[[val + ' mean', val + ' std', val + ' err']].mul(scale_factors, axis=0)
 
     def _calc_recovery(self, spike):
         if self.spiked_result_df.empty:
