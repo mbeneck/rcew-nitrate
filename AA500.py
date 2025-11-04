@@ -21,7 +21,7 @@ class AA500_Result:
         if 1 in self.result_df.index.get_level_values('Spike'):
             self.spiked_result_df = self.result_df.loc[(slice(None), 1), :]
         else:
-            self.spiked_result_df = pd.DataFrame()
+            self.spiked_result_df = pd.DataFrame(columns=self.result_df.columns)
         self._calc_recovery(spike)
 
     @staticmethod
@@ -145,6 +145,12 @@ class AA500_Result:
         #plt.tight_layout()
         #plt.show()
         return ax
+    
+    def scale_results(self, scaling_dict):
+        for key in scaling_dict.keys():
+            self.result_df[[key + ' mean', key + ' std', key + ' err']] = self.result_df[[key + ' mean', key + ' std', key + ' err']] * scaling_dict[key]
+            self.spiked_result_df[[key + ' mean', key + ' std', key + ' err']] = self.spiked_result_df[[key + ' mean', key + ' std', key + ' err']] * scaling_dict[key]
+            self.unspiked_result_df[[key + ' mean', key + ' std', key + ' err']] = self.unspiked_result_df[[key + ' mean', key + ' std', key + ' err']] * scaling_dict[key]
     
     def plot_all_bbv(self, **kwargs):
         vals = self._result_mapping.values()
