@@ -3,10 +3,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 class AA500_Result:
-    def __init__(self, result_path, samplelist_path, master_path, result_mapping={'Results 1':'Nitrate', 'Results 2':'Phosphate', 'Results 3':'Ammonium'}, isv_thresholds = {'Nitrate':.005, 'Phosphate':.004, 'Ammonium': .005}, bbv_thresholds = {'Nitrate':.1, 'Phosphate':.1, 'Ammonium': .1}, pH_threshold = 8, spike = .1):
+    def __init__(self, result_path, samplelist_path, master_path, result_mapping={'Results 1':'Nitrate', 'Results 2':'Phosphate', 'Results 3':'Ammonium'}, isv_thresholds = {'Nitrate':.005, 'Phosphate':.004, 'Ammonium': .005}, bbv_thresholds = {'Nitrate':.2, 'Phosphate':.2, 'Ammonium': .2}, pH_threshold = 8, spike = .1, correct_neutralization=True):
         self._isv_thresholds = isv_thresholds
         self._bbv_thresholds = bbv_thresholds
         self._pH_threshold = pH_threshold
+        self._spike = spike
+        self._correct_neutralization_flag = correct_neutralization
 
         self._result_mapping = result_mapping
         self._raw_result_df = self._read_AA500_results(result_path)
@@ -20,7 +22,6 @@ class AA500_Result:
         self._check_pH()
         self._calc_bbv()
         self._update_result_df()
-        self._calc_recovery(spike)
 
     def _update_result_df(self):
         self.unspiked_result_df = self.result_df.loc[(slice(None), 0),:]
@@ -28,6 +29,7 @@ class AA500_Result:
             self.spiked_result_df = self.result_df.loc[(slice(None), 1), :]
         else:
             self.spiked_result_df = pd.DataFrame(columns=self.result_df.columns)
+        self._calc_recovery(self._spike)
 
 
     @staticmethod
@@ -36,6 +38,8 @@ class AA500_Result:
             return 'background-color: green'
         elif 80 <= val <= 120:
             return 'background-color: orange'
+        elif pd.isna(val):
+            return 'background-color: gray'
         else:
             return 'background-color: red'
         
@@ -44,18 +48,23 @@ class AA500_Result:
         if all(col in self.result_df.columns for col in vol_cols):
             scale_factors = (self.result_df['Volume']*1000 + self.result_df['Vol NaHCO3']+ self.result_df['Vol NaOH/HCl Added'])/(self.result_df['Volume']*1000)
             self.result_df['Dilution Scale Factors'] = scale_factors
-            for val in self._result_mapping.values():
-                self.result_df[[val + ' mean', val + ' std', val + ' err']] = self.result_df[[val + ' mean', val + ' std', val + ' err']].mul(scale_factors, axis=0)
+            if(self._correct_neutralization_flag):
+                for val in self._result_mapping.values():
+                    self.result_df[[val + ' mean', val + ' std', val + ' err']] = self.result_df[[val + ' mean', val + ' std', val + ' err']].mul(scale_factors, axis=0)
 
     def _calc_recovery(self, spike):
         if self.spiked_result_df.empty:
             self.recovery = pd.DataFrame()
         else:
             columns = [val + ' mean' for val in list(self._result_mapping.values())]
+            dilution_factors = self.spiked_result_df.reset_index().set_index('Sample ID')['Dilution Scale Factors']
             unspiked = self.unspiked_result_df.reset_index().set_index('Sample ID')[columns]
             spiked = self.spiked_result_df.reset_index().set_index('Sample ID')[columns]
-            recovery = (spiked - unspiked)/spike*100
-            recovery = recovery.dropna()
+            if(self._correct_neutralization_flag):
+                recovery = (spiked - unspiked).div(spike*dilution_factors, axis=0)*100
+            else:
+                recovery = (spiked - unspiked)/spike*100
+            recovery = recovery.dropna(how='all')
             self.recovery = recovery
             self.recovery_styled = recovery.style.map(self._color_recovery)
 
@@ -111,7 +120,7 @@ class AA500_Result:
             # Group by bottle (Site Name, Sample Datetime)
             grouped = unspiked.set_index(['Site Name', 'Sample Datetime'])[[value + ' mean']].groupby(['Site Name', 'Sample Datetime'])
             # Calculate BBV flag
-            flags = grouped.transform(lambda x: 'BBV' if (((x.max() - x.min())) > 2*self._isv_thresholds[value]) else '')
+            flags = grouped.transform(lambda x: 'BBV' if (((x.max() - x.min()) > 2*self._isv_thresholds[value]) and ((x.max()-x.min())/x.mean() > self._bbv_thresholds[value])) else '')
             flags = flags.fillna('')
             flags.index = unspiked.index
             unspiked[value + ' QA'] = self._concat_qa_strings(unspiked, value, flags[value + ' mean'])
@@ -124,7 +133,6 @@ class AA500_Result:
             flags.index = self.result_df.index
             flags['pH flag'] = ''
             flags[self.result_df['Start pH after NaHCO3']>self._pH_threshold] = 'PH'
-            print(flags)
             for value in self._result_mapping.values():
                 self.result_df[value + ' QA'] = self._concat_qa_strings(self.result_df, value, flags['pH flag'])
 
@@ -140,8 +148,9 @@ class AA500_Result:
         self.result_df = result_df.reset_index().set_index(['Sample ID', 'Spike'])
         self._update_result_df()
 
-    def plot_single_bbv(self, result_df, analyte, **kwargs):
-        df = result_df.reset_index()
+    def plot_single_bbv(self, result_df, analyte, sitename, **kwargs):
+        df = result_df.reset_index().set_index('Site Name')
+        df = df.loc[sitename]
         # Find Sample Datetime values with more than one sample
         counts = df['Sample Datetime'].value_counts()
         multi_samples = counts[counts > 1].index
@@ -163,27 +172,35 @@ class AA500_Result:
         )
 
         # Plot
-        ax = pivoted.plot(kind='bar', yerr=yerr, rot=45, **kwargs)
-        ax.set_ylabel(analyte+ ' mean')
-        #ax.set_title(analyte + ' by Date and Bottle Replicate')
-        ax.legend(title='Bottle Replicate')
-        #plt.tight_layout()
-        #plt.show()
-        return ax
+        if(pivoted.dropna().shape[0] > 0):
+            ax = pivoted.plot(kind='bar', yerr=yerr, rot=45, **kwargs)
+            ax.set_ylabel(analyte+ ' mean')
+            #ax.set_title(analyte + ' by Date and Bottle Replicate')
+            ax.legend(title='Bottle Replicate')
+            #plt.tight_layout()
+            #plt.show()
+            return ax
     
     def scale_results(self, scaling_dict):
         for key in scaling_dict.keys():
             self.result_df[[key + ' mean', key + ' std', key + ' err']] = self.result_df[[key + ' mean', key + ' std', key + ' err']] * scaling_dict[key]
             self.spiked_result_df[[key + ' mean', key + ' std', key + ' err']] = self.spiked_result_df[[key + ' mean', key + ' std', key + ' err']] * scaling_dict[key]
             self.unspiked_result_df[[key + ' mean', key + ' std', key + ' err']] = self.unspiked_result_df[[key + ' mean', key + ' std', key + ' err']] * scaling_dict[key]
+        self._update_result_df()
     
-    def plot_all_bbv(self, **kwargs):
+    def plot_all_bbv(self, sitename, **kwargs):
         vals = self._result_mapping.values()
         fig, axs = plt.subplots(figsize= (8.5, 11), nrows= len(vals), sharex=True)                
         for val, ax  in zip(vals, axs):
-            self.plot_single_bbv(self.unspiked_result_df, val, ax=ax)
+            self.plot_single_bbv(self.unspiked_result_df, val, sitename, ax=ax)
             ax.set_title(val + ' BBV')
         fig.tight_layout()
+
+    def get_condensed_data(self):
+        cols = [f"{analyte} {suffix}" for analyte in ['Nitrate','Phosphate', 'Ammonium'] for suffix in ['mean', 'std','err', 'QA']]
+        cols.append('Sample ID')
+        return self.unspiked_result_df.reset_index().set_index(['Sample Datetime', 'Site Name','Bottle Replicate'])[cols]
+
 
 
     def plot_drift_QA(self, result_name, **kwargs):
