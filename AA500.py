@@ -3,10 +3,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 class AA500_Result:
-    def __init__(self, result_path, samplelist_path, master_path, result_mapping={'Results 1':'Nitrate', 'Results 2':'Phosphate', 'Results 3':'Ammonium'}, isv_thresholds = {'Nitrate':.005, 'Phosphate':.004, 'Ammonium': .005}, bbv_thresholds = {'Nitrate':.2, 'Phosphate':.2, 'Ammonium': .2}, pH_threshold = 8, spike = .1, correct_neutralization=True):
+    def __init__(self, result_path, samplelist_path, master_path, result_mapping={'Results 1':'Nitrate', 'Results 2':'Phosphate', 'Results 3':'Ammonium'}, isv_thresholds = {'Nitrate':.005, 'Phosphate':.004, 'Ammonium': .005}, bbv_thresholds = {'Nitrate':.2, 'Phosphate':.2, 'Ammonium': .2}, pH_threshold = 8, volume_threshold = 100,spike = .1, correct_neutralization=True, autosampler_data={}):
         self._isv_thresholds = isv_thresholds
         self._bbv_thresholds = bbv_thresholds
         self._pH_threshold = pH_threshold
+        self._volume_threshold = volume_threshold
         self._spike = spike
         self._correct_neutralization_flag = correct_neutralization
 
@@ -17,11 +18,32 @@ class AA500_Result:
         self.result_df = self._merge_results_samplelist(result_mapping)
         self.result_df['AA500 Run Date'] = pd.to_datetime(self._metadata.loc['DATE', 'Value']+ ' ' + self._metadata.loc['TIME', 'Value'])
         self.result_df['AA500 Operator'] = self._metadata.loc['OPER', 'Value']
+        self._import_autosampler_data(autosampler_data)
+        self._merge_autosampler_data()
         self._correct_neutralization()
         self._calc_in_sample_std_QA()
         self._check_pH()
+        self._check_vol()
         self._calc_bbv()
         self._update_result_df()
+
+    def _import_autosampler_data(self, autosampler_data):
+        self._autosampler_data = pd.DataFrame()
+        for key in autosampler_data.keys():
+            df= pd.read_excel(autosampler_data[key]).dropna(subset=['J. day tub was collected', 'Seq. '], how='any')
+            df['Time Collected (in bottle)'] = df['Time Collected (in bottle)'].astype(str).apply(lambda x: x[:-2] + ':' + x[-2:] if pd.notnull(x) and len(x) >= 3 else x)
+            df['Sample Datetime'] = pd.to_datetime(df['Sample Date'].astype(str) + ' ' + df['Time Collected (in bottle)'].astype(str))
+            df['Site Name'] = key
+            self._autosampler_data = pd.concat([self._autosampler_data, df])
+        self._autosampler_data.set_index(['Site Name', 'Sample Datetime'], inplace=True)
+
+    def _merge_autosampler_data(self):
+        result_df = self.result_df.reset_index().set_index(['Site Name', 'Sample Datetime'])
+        self.result_df = pd.merge(result_df, self._autosampler_data, how='left', left_index=True, right_index=True)
+        self.result_df = self.result_df.reset_index().set_index(['Sample ID', 'Spike'])
+
+    
+
 
     def _update_result_df(self):
         self.unspiked_result_df = self.result_df.loc[(slice(None), 0),:]
@@ -136,6 +158,15 @@ class AA500_Result:
             for value in self._result_mapping.values():
                 self.result_df[value + ' QA'] = self._concat_qa_strings(self.result_df, value, flags['pH flag'])
 
+    def _check_vol(self):
+        if 'Water Volume' in self.result_df.columns:
+            flags = pd.DataFrame()
+            flags.index = self.result_df.index
+            flags['Volume Flag'] = ''
+            flags[self.result_df['Water Volume']<self._volume_threshold] = 'VOL'
+            for value in self._result_mapping.values():
+                self.result_df[value + ' QA'] = self._concat_qa_strings(self.result_df, value, flags['Volume Flag'])
+
     def drop_bad_peaks(self, bad_peak_dict):
         result_df = self.result_df.reset_index().set_index('Cup Number')     
 
@@ -198,7 +229,8 @@ class AA500_Result:
 
     def get_condensed_data(self):
         cols = [f"{analyte} {suffix}" for analyte in ['Nitrate','Phosphate', 'Ammonium'] for suffix in ['mean', 'std','err', 'QA']]
-        cols.append('Sample ID')
+        cols = cols + ['Sample ID', 'Sample Type', 'Water Volume']
+
         return self.unspiked_result_df.reset_index().set_index(['Sample Datetime', 'Site Name','Bottle Replicate'])[cols]
 
 
