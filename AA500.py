@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 class AA500_Result:
-    def __init__(self, result_path, samplelist_path, master_path, result_mapping={'Results 1':'Nitrate', 'Results 2':'Phosphate', 'Results 3':'Ammonium'}, isv_thresholds = {'Nitrate':.005, 'Phosphate':.004, 'Ammonium': .005}, bbv_thresholds = {'Nitrate':.2, 'Phosphate':.2, 'Ammonium': .2}, pH_threshold = 8, volume_threshold = 100,spike = .1, correct_neutralization=True, autosampler_data={}):
+    def __init__(self, result_path, samplelist_path, master_path, result_mapping={'Results 1':'Nitrate', 'Results 2':'Phosphate', 'Results 3':'Ammonium'}, isv_thresholds = {'Nitrate':.005, 'Phosphate':.004, 'Ammonium': .005}, bbv_thresholds = {'Nitrate':.2, 'Phosphate':.2, 'Ammonium': .2}, pH_threshold = 8, volume_threshold = 200,spike = .1, correct_neutralization=True, autosampler_data={}):
         self._isv_thresholds = isv_thresholds
         self._bbv_thresholds = bbv_thresholds
         self._pH_threshold = pH_threshold
