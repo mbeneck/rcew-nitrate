@@ -228,7 +228,7 @@ class AA500_Result:
         fig.tight_layout()
 
     def get_condensed_data(self):
-        cols = [f"{analyte} {suffix}" for analyte in ['Nitrate','Phosphate', 'Ammonium'] for suffix in ['mean', 'std','err', 'QA']]
+        cols = [f"{analyte} {suffix}" for analyte in self._result_mapping.values() for suffix in ['mean', 'std','err', 'QA']]
         cols = cols + ['Sample ID', 'Sample Type', 'Water Volume']
 
         return self.unspiked_result_df.reset_index().set_index(['Sample Datetime', 'Site Name','Bottle Replicate'])[cols]
