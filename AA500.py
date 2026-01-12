@@ -28,10 +28,23 @@ class AA500_Result:
         self._update_result_df()
 
     def _import_autosampler_data(self, autosampler_data):
+
+        def pad_times(timestr):
+            if pd.notnull(timestr):
+                if len(timestr) >= 3:
+                    return timestr[:-2] + ':' + timestr[-2:]
+                elif len(timestr) == 2:
+                    return '00:' + timestr
+                elif len(timestr) ==1:
+                    return '00:0' + timestr
+            else:
+                return ""
+
+
         self._autosampler_data = pd.DataFrame()
         for key in autosampler_data.keys():
-            df= pd.read_excel(autosampler_data[key]).dropna(subset=['J. day tub was collected', 'Seq. '], how='any')
-            df['Time Collected (in bottle)'] = df['Time Collected (in bottle)'].astype(str).apply(lambda x: x[:-2] + ':' + x[-2:] if pd.notnull(x) and len(x) >= 3 else x)
+            df= pd.read_excel(autosampler_data[key], dtype={'Time Collected (in bottle)': int}).dropna(subset=['J. day tub was collected', 'Seq. '], how='any')
+            df['Time Collected (in bottle)'] = df['Time Collected (in bottle)'].astype(str).apply(lambda x: pad_times(x))
             df['Sample Datetime'] = pd.to_datetime(df['Sample Date'].astype(str) + ' ' + df['Time Collected (in bottle)'].astype(str))
             df['Site Name'] = key
             self._autosampler_data = pd.concat([self._autosampler_data, df])
